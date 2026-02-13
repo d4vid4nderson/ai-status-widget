@@ -4,6 +4,7 @@ const OPENAI_URL = "https://status.openai.com/api/v2/summary.json";
 const ANTHROPIC_URL = "https://status.claude.com/api/v2/summary.json";
 const OPENAI_STATUS_PAGE = "https://status.openai.com/";
 const ANTHROPIC_STATUS_PAGE = "https://status.claude.com/";
+const MODELS_JSON_URL = "https://raw.githubusercontent.com/d4vid4nderson/ai-status-widget/main/models.json";
 const POSITION_STORAGE_KEY = "ai-status-widget:position";
 
 const INDICATOR_MAP = {
@@ -13,21 +14,8 @@ const INDICATOR_MAP = {
   critical: { level: "red", label: "Critical outage" },
 };
 
-const OPENAI_MODELS = [
-  "GPT-5.2",
-  "GPT-5.2 pro",
-  "GPT-5.1",
-  "GPT-5",
-  "GPT-5 mini",
-  "GPT-5 nano",
-  "GPT-5.2-Codex",
-  "gpt-realtime",
-  "gpt-realtime-mini",
-  "gpt-audio",
-  "gpt-audio-mini",
-];
-
-const OPENAI_MODEL_GROUPS = [
+// Hardcoded fallback model lists (used if models.json fetch fails)
+const FALLBACK_openaiModelGroups = [
   { label: "GPT‑5.2", models: ["GPT-5.2", "GPT-5.2 pro"] },
   { label: "GPT‑5.x", models: ["GPT-5.1", "GPT-5", "GPT-5 mini", "GPT-5 nano"] },
   { label: "Codex", models: ["GPT-5.2-Codex"] },
@@ -35,14 +23,14 @@ const OPENAI_MODEL_GROUPS = [
   { label: "Audio", models: ["gpt-audio", "gpt-audio-mini"] },
 ];
 
-const ANTHROPIC_COMPONENTS = [
+const FALLBACK_anthropicComponentsList = [
   { key: "claude.ai", label: "claude.ai" },
   { key: "platform.claude.com (formerly console.anthropic.com)", label: "platform.claude.com" },
   { key: "Claude API (api.anthropic.com)", label: "Claude API" },
   { key: "Claude Code", label: "Claude Code" },
 ];
 
-const OPENAI_COMPONENTS = [
+const FALLBACK_openaiComponentsList = [
   { key: "Chat Completions", label: "Chat Completions" },
   { key: "Embeddings", label: "Embeddings" },
   { key: "Files", label: "Files" },
@@ -93,6 +81,11 @@ export const initialState = {
   anthropicComponents: [],
   lastUpdated: null,
   error: null,
+  // Model lists (fetched from models.json, fallback to hardcoded)
+  openaiModelGroups: FALLBACK_openaiModelGroups,
+  openaiComponentsList: FALLBACK_openaiComponentsList,
+  anthropicComponentsList: FALLBACK_anthropicComponentsList,
+  modelsLoaded: false,
 };
 
 const fetchJson = (url) =>
@@ -101,8 +94,19 @@ const fetchJson = (url) =>
     return response.json();
   });
 
-export const command = async (dispatch) => {
+export const command = async (dispatch, previousState) => {
   try {
+    // Fetch models.json once if not already loaded
+    let modelsData = null;
+    if (!previousState?.modelsLoaded) {
+      try {
+        modelsData = await fetchJson(MODELS_JSON_URL);
+      } catch (modelsError) {
+        console.log("Failed to fetch models.json, using fallback");
+      }
+    }
+
+    // Fetch status data
     const [openaiRes, anthropicRes] = await Promise.all([
       fetchJson(OPENAI_URL),
       fetchJson(ANTHROPIC_URL),
@@ -111,7 +115,7 @@ export const command = async (dispatch) => {
     const openaiStatus = levelFromIndicator(openaiRes?.status?.indicator);
     const anthropicStatus = levelFromIndicator(anthropicRes?.status?.indicator);
 
-    dispatch({
+    const updatePayload = {
       type: "UPDATE",
       openai: openaiStatus,
       anthropic: anthropicStatus,
@@ -119,7 +123,17 @@ export const command = async (dispatch) => {
       anthropicComponents: anthropicRes?.components || [],
       lastUpdated: new Date().toISOString(),
       error: null,
-    });
+    };
+
+    // Add models data if fetched
+    if (modelsData) {
+      updatePayload.openaiModelGroups = modelsData.openai?.modelGroups || FALLBACK_openaiModelGroups;
+      updatePayload.openaiComponentsList = modelsData.openai?.components || FALLBACK_openaiComponentsList;
+      updatePayload.anthropicComponentsList = modelsData.anthropic?.components || FALLBACK_anthropicComponentsList;
+      updatePayload.modelsLoaded = true;
+    }
+
+    dispatch(updatePayload);
   } catch (error) {
     dispatch({
       type: "ERROR",
@@ -138,6 +152,11 @@ export const updateState = (event, previousState) => {
       anthropicComponents: event.anthropicComponents,
       lastUpdated: event.lastUpdated,
       error: null,
+      // Update model lists if provided
+      openaiModelGroups: event.openaiModelGroups || previousState.openaiModelGroups,
+      openaiComponentsList: event.openaiComponentsList || previousState.openaiComponentsList,
+      anthropicComponentsList: event.anthropicComponentsList || previousState.anthropicComponentsList,
+      modelsLoaded: event.modelsLoaded || previousState.modelsLoaded,
     };
   }
   if (event.type === "ERROR") {
@@ -353,7 +372,17 @@ const buttonClass = css`
 `;
 
 const Widget = (props) => {
-  const { openai, anthropic, openaiComponents, anthropicComponents, lastUpdated, error } = props;
+  const {
+    openai,
+    anthropic,
+    openaiComponents,
+    anthropicComponents,
+    lastUpdated,
+    error,
+    openaiModelGroups,
+    openaiComponentsList,
+    anthropicComponentsList,
+  } = props;
 
   // Use simple useState - position will reset on refresh but that's ok
   const [position, setPosition] = React.useState({ top: 25, left: 25 });
@@ -525,7 +554,7 @@ const Widget = (props) => {
           </div>
           {openaiOpen && (
             <div className={detailClass}>
-              {OPENAI_MODEL_GROUPS.map((group) => (
+              {openaiModelGroups.map((group) => (
                 <React.Fragment key={group.label}>
                   <div
                     className={`${detailSectionClass} ${openModelGroups[group.label] ? "open" : ""}`}
@@ -604,7 +633,7 @@ const Widget = (props) => {
                   <polyline points="6 9 12 15 18 9"></polyline>
                 </svg>
               </div>
-              {openModelGroups['APIs'] && OPENAI_COMPONENTS.map((item) => {
+              {openModelGroups['APIs'] && openaiComponentsList.map((item) => {
                 const match = openaiComponents?.find(
                   (c) => c.name?.toLowerCase() === item.key.toLowerCase()
                 );
@@ -686,7 +715,7 @@ const Widget = (props) => {
           </div>
           {anthropicOpen && (
             <div className={detailClass}>
-              {ANTHROPIC_COMPONENTS.map((item) => {
+              {anthropicComponentsList.map((item) => {
                 const match = anthropicComponents?.find(
                   (c) => c.name?.toLowerCase() === item.key.toLowerCase()
                 );

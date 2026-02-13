@@ -1,0 +1,47 @@
+{
+  "version": "2.0.0",
+  "lastUpdated": "2026-02-13",
+  "openai": {
+    "modelGroups": [
+      {
+        "label": "GPT-5.2",
+        "models": ["GPT-5.2", "GPT-5.2 pro"]
+      },
+      {
+        "label": "GPT-5.x",
+        "models": ["GPT-5.1", "GPT-5", "GPT-5 mini", "GPT-5 nano"]
+      },
+      {
+        "label": "Codex",
+        "models": ["GPT-5.2-Codex"]
+      },
+      {
+        "label": "Realtime",
+        "models": ["gpt-realtime", "gpt-realtime-mini"]
+      },
+      {
+        "label": "Audio",
+        "models": ["gpt-audio", "gpt-audio-mini"]
+      }
+    ],
+    "components": [
+      { "key": "Chat Completions", "label": "Chat Completions" },
+      { "key": "Embeddings", "label": "Embeddings" },
+      { "key": "Files", "label": "Files" },
+      { "key": "Batch", "label": "Batch" },
+      { "key": "Fine-tuning", "label": "Fine-tuning" },
+      { "key": "Moderations", "label": "Moderations" },
+      { "key": "Image Generation", "label": "Image Generation" },
+      { "key": "Compliance API", "label": "Compliance API" },
+      { "key": "Search", "label": "Search" }
+    ]
+  },
+  "anthropic": {
+    "components": [
+      { "key": "claude.ai", "label": "claude.ai" },
+      { "key": "platform.claude.com (formerly console.anthropic.com)", "label": "platform.claude.com" },
+      { "key": "Claude API (api.anthropic.com)", "label": "Claude API" },
+      { "key": "Claude Code", "label": "Claude Code" }
+    ]
+  }
+}

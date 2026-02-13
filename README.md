@@ -5,20 +5,6 @@ A beautiful, feature-rich desktop widget for macOS [Übersicht](https://tracesof
 ![Widget Screenshot](https://img.shields.io/badge/macOS-Übersicht-blue?logo=apple)
 ![Version](https://img.shields.io/badge/version-2.0-green)
 
-## 📸 Screenshots
-
-<div align="center">
-
-### Dark Mode
-<img src="screenshots/dark-mode.png" width="400" alt="Dark Mode - Collapsed">
-<img src="screenshots/dark-mode-expanded.png" width="400" alt="Dark Mode - Expanded">
-
-### Light Mode
-<img src="screenshots/light-mode.png" width="400" alt="Light Mode - Collapsed">
-<img src="screenshots/light-mode-expanded.png" width="400" alt="Light Mode - Expanded">
-
-</div>
-
 ## ✨ Features
 
 ### 🎯 Core Functionality
@@ -45,6 +31,33 @@ A beautiful, feature-rich desktop widget for macOS [Übersicht](https://tracesof
 - **Theme toggle** (☀️/🌙) in footer
 - **Manual refresh** button with spinning animation
 - **Status page links** (🔗) next to service names
+
+## 📸 Screenshots
+
+<table>
+  <tr>
+    <td width="50%">
+      <h3 align="center">🌙 Dark Mode</h3>
+      <p align="center"><strong>Collapsed View</strong></p>
+      <img src="screenshots/dark-mode.png" alt="Dark Mode Collapsed" width="100%">
+    </td>
+    <td width="50%">
+      <h3 align="center">☀️ Light Mode</h3>
+      <p align="center"><strong>Collapsed View</strong></p>
+      <img src="screenshots/light-mode.png" alt="Light Mode Collapsed" width="100%">
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <p align="center"><strong>Expanded View</strong></p>
+      <img src="screenshots/dark-mode-expanded.png" alt="Dark Mode Expanded" width="100%">
+    </td>
+    <td width="50%">
+      <p align="center"><strong>Expanded View</strong></p>
+      <img src="screenshots/light-mode-expanded.png" alt="Light Mode Expanded" width="100%">
+    </td>
+  </tr>
+</table>
 
 ## 📋 Requirements
 

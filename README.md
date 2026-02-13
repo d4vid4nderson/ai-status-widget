@@ -1,4 +1,4 @@
-<h1>
+<h1 style="text-align: left;">
   <img src="ai_status.png" alt="AI Status Widget Logo" width="50" style="vertical-align: middle; margin-right: 10px;">
   AI Service Health Widget
 </h1>

@@ -1,5 +1,9 @@
 # AI Service Health Widget
 
+<p align="center">
+  <img src="ai_status.png" alt="AI Status Widget Logo" width="200">
+</p>
+
 A beautiful, feature-rich desktop widget for macOS [Übersicht](https://tracesof.net/uebersicht/) that monitors real-time service health for **OpenAI** and **Anthropic** AI services.
 
 ![Widget Screenshot](https://img.shields.io/badge/macOS-Übersicht-blue?logo=apple)

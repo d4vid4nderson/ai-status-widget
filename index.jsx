@@ -86,6 +86,8 @@ const fetchJson = (url) =>
 
 export const refreshFrequency = 120000;
 
+export const className = ``;
+
 export const initialState = {
   statuses: {},
   lastUpdated: null,

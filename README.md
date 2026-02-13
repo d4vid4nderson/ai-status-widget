@@ -1,6 +1,6 @@
-<h1 style="text-align: left;">
-  <img src="ai_status.png" alt="AI Status Widget Logo" width="50" style="vertical-align: middle; margin-right: 10px;">
-  AI Service Health Widget
+<h1 style="display: flex; align-items: center; text-align: left;">
+  <img src="ai_status.png" alt="AI Status Widget Logo" width="50" style="margin-right: 10px;">
+  <span>AI Service Health Widget</span>
 </h1>
 
 A beautiful, feature-rich desktop widget for macOS [Übersicht](https://tracesof.net/uebersicht/) that monitors real-time service health for **OpenAI** and **Anthropic** AI services.

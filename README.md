@@ -5,6 +5,20 @@ A beautiful, feature-rich desktop widget for macOS [Übersicht](https://tracesof
 ![Widget Screenshot](https://img.shields.io/badge/macOS-Übersicht-blue?logo=apple)
 ![Version](https://img.shields.io/badge/version-2.0-green)
 
+## 📸 Screenshots
+
+<div align="center">
+
+### Dark Mode
+<img src="screenshots/dark-mode.png" width="400" alt="Dark Mode - Collapsed">
+<img src="screenshots/dark-mode-expanded.png" width="400" alt="Dark Mode - Expanded">
+
+### Light Mode
+<img src="screenshots/light-mode.png" width="400" alt="Light Mode - Collapsed">
+<img src="screenshots/light-mode-expanded.png" width="400" alt="Light Mode - Expanded">
+
+</div>
+
 ## ✨ Features
 
 ### 🎯 Core Functionality

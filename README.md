@@ -1,7 +1,7 @@
-<table>
+<table style="border: none; border-collapse: collapse;">
   <tr>
-    <td><img src="ai_status.png" alt="AI Status Widget Logo" width="50"></td>
-    <td><h1>AI Service Health Widget</h1></td>
+    <td style="border: none; padding-right: 10px;"><img src="ai_status.png" alt="AI Status Widget Logo" width="50"></td>
+    <td style="border: none;"><h1>AI Service Health Widget</h1></td>
   </tr>
 </table>
 

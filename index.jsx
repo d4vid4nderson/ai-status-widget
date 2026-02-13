@@ -1,9 +1,17 @@
-import { React, css } from "uebersicht";
+import { React, css, run } from "uebersicht";
 
 const OPENAI_URL = "https://status.openai.com/api/v2/summary.json";
 const ANTHROPIC_URL = "https://status.claude.com/api/v2/summary.json";
+const OPENAI_STATUS_PAGE = "https://status.openai.com/";
+const ANTHROPIC_STATUS_PAGE = "https://status.claude.com/";
 const POSITION_STORAGE_KEY = "ai-status-widget:position";
-const THEME_STORAGE_KEY = "ai-status-widget:theme";
+
+const INDICATOR_MAP = {
+  none: { level: "green", label: "Operational" },
+  minor: { level: "yellow", label: "Minor issues" },
+  major: { level: "red", label: "Major outage" },
+  critical: { level: "red", label: "Critical outage" },
+};
 
 const OPENAI_MODELS = [
   "GPT-5.2",
@@ -19,12 +27,13 @@ const OPENAI_MODELS = [
   "gpt-audio-mini",
 ];
 
-const INDICATOR_MAP = {
-  none: { level: "green", label: "Operational" },
-  minor: { level: "yellow", label: "Minor issues" },
-  major: { level: "red", label: "Major outage" },
-  critical: { level: "red", label: "Critical outage" },
-};
+const OPENAI_MODEL_GROUPS = [
+  { label: "GPT‑5.2", models: ["GPT-5.2", "GPT-5.2 pro"] },
+  { label: "GPT‑5.x", models: ["GPT-5.1", "GPT-5", "GPT-5 mini", "GPT-5 nano"] },
+  { label: "Codex", models: ["GPT-5.2-Codex"] },
+  { label: "Realtime", models: ["gpt-realtime", "gpt-realtime-mini"] },
+  { label: "Audio", models: ["gpt-audio", "gpt-audio-mini"] },
+];
 
 const ANTHROPIC_COMPONENTS = [
   { key: "claude.ai", label: "claude.ai" },
@@ -35,30 +44,19 @@ const ANTHROPIC_COMPONENTS = [
 
 const OPENAI_COMPONENTS = [
   { key: "Chat Completions", label: "Chat Completions" },
-  { key: "Realtime", label: "Realtime" },
   { key: "Embeddings", label: "Embeddings" },
   { key: "Files", label: "Files" },
   { key: "Batch", label: "Batch" },
   { key: "Fine-tuning", label: "Fine-tuning" },
   { key: "Moderations", label: "Moderations" },
-  { key: "Audio", label: "Audio" },
   { key: "Image Generation", label: "Image Generation" },
   { key: "Compliance API", label: "Compliance API" },
   { key: "Search", label: "Search" },
-  { key: "Codex", label: "Codex" },
-];
-
-const OPENAI_MODEL_GROUPS = [
-  { label: "GPT‑5.2", models: ["GPT-5.2", "GPT-5.2 pro"] },
-  { label: "GPT‑5.x", models: ["GPT-5.1", "GPT-5", "GPT-5 mini", "GPT-5 nano"] },
-  { label: "Codex", models: ["GPT-5.2-Codex"] },
-  { label: "Realtime", models: ["gpt-realtime", "gpt-realtime-mini"] },
-  { label: "Audio", models: ["gpt-audio", "gpt-audio-mini"] },
 ];
 
 const levelFromIndicator = (indicator) => {
   if (!indicator) return { level: "unknown", label: "Unknown" };
-  return INDICATOR_MAP[indicator] || { level: "unknown", label: "Unknown" };
+  return INDICATOR_MAP[indicator] || { level: "unknown", label: indicator };
 };
 
 const componentLevel = (status) => {
@@ -78,22 +76,30 @@ const componentLevel = (status) => {
   }
 };
 
+export const refreshFrequency = 120000; // 2 minutes
+
+export const className = `
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+`;
+
+export const initialState = {
+  openai: null,
+  anthropic: null,
+  openaiComponents: [],
+  anthropicComponents: [],
+  lastUpdated: null,
+  error: null,
+};
+
 const fetchJson = (url) =>
   fetch(url, { cache: "no-store" }).then((response) => {
     if (!response.ok) throw new Error(`Request failed: ${url}`);
     return response.json();
   });
-
-export const refreshFrequency = 120000;
-
-export const className = ``;
-
-export const initialState = {
-  statuses: {},
-  lastUpdated: null,
-  lastChecked: null,
-  error: null,
-};
 
 export const command = async (dispatch) => {
   try {
@@ -106,61 +112,41 @@ export const command = async (dispatch) => {
     const anthropicStatus = levelFromIndicator(anthropicRes?.status?.indicator);
 
     dispatch({
-      type: "STATUS_UPDATE",
-      statuses: {
-        openai: {
-          name: "OpenAI",
-          ...openaiStatus,
-          description: openaiRes?.status?.description || "",
-          components: openaiRes?.components || [],
-        },
-        anthropic: {
-          name: "Anthropic",
-          ...anthropicStatus,
-          description: anthropicRes?.status?.description || "",
-          components: anthropicRes?.components || [],
-        },
-      },
+      type: "UPDATE",
+      openai: openaiStatus,
+      anthropic: anthropicStatus,
+      openaiComponents: openaiRes?.components || [],
+      anthropicComponents: anthropicRes?.components || [],
       lastUpdated: new Date().toISOString(),
-      lastChecked: new Date().toISOString(),
       error: null,
     });
   } catch (error) {
     dispatch({
-      type: "STATUS_ERROR",
-      error: error?.message || "Failed to update status.",
-      lastChecked: new Date().toISOString(),
+      type: "ERROR",
+      error: error?.message || "Failed to fetch status",
     });
   }
 };
 
 export const updateState = (event, previousState) => {
-  if (event.type === "STATUS_UPDATE") {
+  if (event.type === "UPDATE") {
     return {
       ...previousState,
-      statuses: event.statuses,
+      openai: event.openai,
+      anthropic: event.anthropic,
+      openaiComponents: event.openaiComponents,
+      anthropicComponents: event.anthropicComponents,
       lastUpdated: event.lastUpdated,
-      lastChecked: event.lastChecked,
       error: null,
     };
   }
-
-  if (event.type === "STATUS_ERROR") {
+  if (event.type === "ERROR") {
     return {
       ...previousState,
       error: event.error,
-      lastUpdated: previousState.lastUpdated,
-      lastChecked: event.lastChecked,
     };
   }
-
   return previousState;
-};
-
-const formatTime = (iso) => {
-  if (!iso) return "—";
-  const date = new Date(iso);
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 };
 
 const containerClass = css`
@@ -168,601 +154,633 @@ const containerClass = css`
   width: 320px;
   display: flex;
   flex-direction: column;
+  pointer-events: auto;
 `;
 
-const footerBarClass = css`
-  width: 100%;
-  height: 38px;
+const widgetClass = css`
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 18px 18px 0 0;
+  padding: 14px;
+  color: var(--text);
+  font-family: "Avenir Next", "Helvetica Neue", sans-serif;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(12px);
+  max-height: 600px;
+  display: flex;
+  flex-direction: column;
+`;
+
+const scrollableContentClass = css`
+  overflow-y: auto;
+  overflow-x: hidden;
+  max-height: 520px;
+  padding-right: 4px;
+  margin-right: -4px;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.4);
+    border-radius: 999px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+`;
+
+const serviceContainerClass = css`
+  background: var(--row-bg);
+  border-radius: 12px;
+  margin-bottom: 10px;
+`;
+
+const rowClass = css`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+`;
+
+const dotClass = css`
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+`;
+
+const toggleButtonClass = css`
+  border: none;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  opacity: 0.7;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  transition: transform 0.2s ease;
+
+  &:hover {
+    opacity: 1;
+  }
+
+  &.open {
+    transform: rotate(180deg);
+  }
+`;
+
+const externalLinkClass = css`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text);
+  opacity: 0.5;
+  transition: opacity 0.2s ease;
+  margin-left: 6px;
+  cursor: pointer;
+  text-decoration: none;
+
+  &:hover {
+    opacity: 1;
+  }
+`;
+
+const detailClass = css`
+  padding: 0 12px 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+`;
+
+const detailRowClass = css`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: var(--detail-row-bg);
+  border-radius: 10px;
+  font-size: 12px;
+`;
+
+const detailSectionClass = css`
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text);
+  opacity: 0.6;
+  margin: 4px 2px -2px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+
+  &:hover {
+    opacity: 0.8;
+    background: var(--detail-row-bg);
+  }
+
+  svg {
+    transition: transform 0.2s ease;
+  }
+
+  &.open svg {
+    transform: rotate(180deg);
+  }
+`;
+
+const smallDotClass = css`
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+`;
+
+const tinyDotClass = css`
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+`;
+
+const footerClass = css`
   background: var(--footer-bg);
   border-radius: 0 0 18px 18px;
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.28);
-  margin-top: 0;
+  padding: 0 14px;
+  height: 38px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 14px;
-  align-self: stretch;
-  box-sizing: border-box;
-`;
-
-const footerTimeClass = css`
-  font-size: 12px;
-  font-weight: 600;
-  color: rgba(226, 232, 240, 0.8);
-`;
-
-const footerLabelClass = css`
-  font-size: 11px;
-  text-transform: none;
-  letter-spacing: 0;
-  color: var(--muted-text);
-  line-height: 1.1;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.28);
   font-family: "Avenir Next", "Helvetica Neue", sans-serif;
 `;
 
-const footerTimeValueClass = css`
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--time-text);
-  line-height: 1.1;
-  font-family: "Avenir Next", "Helvetica Neue", sans-serif;
-`;
-
-const footerStackClass = css`
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-`;
-
-const footerActionsClass = css`
-  display: flex;
-  align-items: center;
-  gap: 6px;
-`;
-
-const iconButtonClass = css`
+const buttonClass = css`
   width: 28px;
   height: 28px;
   border-radius: 8px;
   border: none;
   background: var(--button-bg);
-  display: inline-flex;
+  color: var(--button-text);
+  cursor: pointer;
+  display: flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
-  color: var(--button-text);
-  font-size: 16px;
-  line-height: 1;
-`;
+  padding: 0;
 
-const iconButtonHoverClass = css`
   &:hover {
-    color: var(--button-text-hover);
     background: var(--button-bg-hover);
-  }
-`;
-
-const spinClass = css`
-  @keyframes spin {
-    from {
-      transform: rotate(0deg);
-    }
-    to {
-      transform: rotate(360deg);
-    }
+    color: var(--button-text-hover);
   }
 
-  &.is-spinning svg {
+  &.spinning svg {
     animation: spin 0.9s linear infinite;
   }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
 `;
 
-const themeToggleClass = css`
-  width: 28px;
-  height: 28px;
-  padding: 0;
-`;
+const Widget = (props) => {
+  const { openai, anthropic, openaiComponents, anthropicComponents, lastUpdated, error } = props;
 
-const widgetClass = css`
-  box-sizing: border-box;
-  max-height: 520px;
-  font-family: "Avenir Next", "Helvetica Neue", sans-serif;
-  color: var(--text);
-  text-align: left;
-  background: var(--card-bg);
-  border: 1px solid var(--card-border);
-  border-radius: 18px 18px 0 0;
-  padding: 14px 14px 16px;
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
-  backdrop-filter: blur(12px);
-  overflow: hidden;
-
-  & * {
-    box-sizing: border-box;
-  }
-
-  & .header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 12px;
-    cursor: move;
-    user-select: none;
-  }
-
-  & .header-actions {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-
-  & .title {
-    font-size: 16px;
-    font-weight: 700;
-    color: var(--title-text);
-  }
-
-  & .subtitle {
-    font-size: 11px;
-    color: var(--muted-text);
-    margin-top: 2px;
-  }
-
-  & .time {
-    font-size: 12px;
-    font-weight: 600;
-    color: rgba(226, 232, 240, 0.8);
-  }
-
-  & .row {
-    display: grid;
-    grid-template-columns: 12px 1fr auto auto;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 10px;
-    background: var(--row-bg);
-    border-radius: 12px;
-    font-size: 13px;
-    color: var(--title-text);
-    width: 100%;
-  }
-
-  & .row + .row {
-    margin-top: 12px;
-  }
-
-  & .rows {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    width: calc(100% + 8px);
-    overflow-y: scroll;
-    max-height: 440px;
-    padding-right: 0;
-    margin-left: -4px;
-    margin-right: -4px;
-    scrollbar-gutter: stable;
-  }
-
-  & .rows::-webkit-scrollbar {
-    width: 6px;
-  }
-
-  & .rows::-webkit-scrollbar-thumb {
-    background: rgba(148, 163, 184, 0.4);
-    border-radius: 999px;
-  }
-
-  & .label {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--label-text);
-  }
-
-  & .toggle {
-    border: none;
-    background: transparent;
-    color: var(--label-text);
-    font-size: 11px;
-    font-weight: 600;
-    cursor: pointer;
-    min-width: 38px;
-    text-align: right;
-  }
-
-  & .toggle:hover {
-    color: var(--title-text);
-  }
-
-  & .detail {
-    margin-top: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    background: var(--detail-bg);
-    border-radius: 12px;
-    padding: 8px 10px;
-    font-size: 12px;
-    color: var(--title-text);
-  }
-
-  & .detail-section {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--label-text);
-    margin: 2px 2px -2px;
-  }
-
-  & .detail-row {
-    display: grid;
-    grid-template-columns: 10px 1fr auto;
-    gap: 8px;
-    align-items: center;
-    padding: 6px 8px;
-    border-radius: 10px;
-    background: var(--detail-row-bg);
-  }
-
-  & .dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    display: inline-block;
-  }
-
-  & .dot.green {
-    background: #10b981;
-    box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
-  }
-
-  & .dot.yellow {
-    background: #f59e0b;
-    box-shadow: 0 0 8px rgba(245, 158, 11, 0.6);
-  }
-
-  & .dot.red {
-    background: #ef4444;
-    box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
-  }
-
-  & .dot.unknown {
-    background: #94a3b8;
-    box-shadow: 0 0 8px rgba(148, 163, 184, 0.6);
-  }
-
-  & .error {
-    margin-top: 10px;
-    font-size: 11px;
-    color: #fca5a5;
-  }
-
-`;
-
-const StatusRow = ({ status, isOpen, onToggle, detail, showStatus = true }) => (
-  <div>
-    <div className="row">
-      <span className={`dot ${status?.level || "unknown"}`} />
-      <span>{status?.name || "Loading..."}</span>
-      {onToggle ? (
-        <button className="toggle" type="button" onClick={onToggle}>
-          {isOpen ? "Hide" : "Show"}
-        </button>
-      ) : (
-        <span />
-      )}
-      {showStatus ? <span className="label">{status?.label || ""}</span> : <span />}
-    </div>
-    {isOpen && detail ? <div className="detail">{detail}</div> : null}
-  </div>
-);
-
-const Widget = ({ statuses, lastUpdated, lastChecked, error, dispatch }) => {
-  const [position, setPosition] = React.useState({ top: 80, left: 40 });
+  // Use simple useState - position will reset on refresh but that's ok
+  const [position, setPosition] = React.useState({ top: 25, left: 25 });
+  const [theme, setTheme] = React.useState("dark");
+  const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [openaiOpen, setOpenaiOpen] = React.useState(false);
   const [anthropicOpen, setAnthropicOpen] = React.useState(false);
-  const [isRefreshing, setIsRefreshing] = React.useState(false);
-  const refreshTimerRef = React.useRef(null);
-  const [theme, setTheme] = React.useState("dark");
-  const dragRef = React.useRef(null);
-  const dragStartRef = React.useRef(null);
+  const [openModelGroups, setOpenModelGroups] = React.useState({});
 
-  React.useEffect(() => {
-    try {
-      const stored = window.localStorage.getItem(POSITION_STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (typeof parsed?.top === "number" && typeof parsed?.left === "number") {
-          setPosition({ top: parsed.top, left: parsed.left });
-        }
-      }
-    } catch (error) {
-      // ignore
-    }
-  }, []);
-
-  React.useEffect(() => {
-    try {
-      const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
-      if (stored === "light" || stored === "dark") {
-        setTheme(stored);
-      }
-    } catch (error) {
-      // ignore
-    }
-  }, []);
-
-  React.useEffect(() => {
-    try {
-      window.localStorage.setItem(THEME_STORAGE_KEY, theme);
-    } catch (error) {
-      // ignore
-    }
-  }, [theme]);
-
-  const onDragStart = (event) => {
+  const onMouseDown = (event) => {
     if (event.button !== 0) return;
     event.preventDefault();
-    dragStartRef.current = {
-      x: event.clientX,
-      y: event.clientY,
-      top: position.top,
-      left: position.left,
+
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const startTop = position.top;
+    const startLeft = position.left;
+
+    const onMouseMove = (e) => {
+      const deltaX = e.clientX - startX;
+      const deltaY = e.clientY - startY;
+      setPosition({
+        top: startTop + deltaY,
+        left: startLeft + deltaX,
+      });
     };
-    dragRef.current = true;
-    window.addEventListener("mousemove", onDragMove);
-    window.addEventListener("mouseup", onDragEnd);
+
+    const onMouseUp = () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
   };
 
-  const onDragMove = (event) => {
-    if (!dragRef.current || !dragStartRef.current) return;
-    const deltaX = event.clientX - dragStartRef.current.x;
-    const deltaY = event.clientY - dragStartRef.current.y;
-    setPosition({
-      top: dragStartRef.current.top + deltaY,
-      left: dragStartRef.current.left + deltaX,
-    });
+  const formatTime = (iso) => {
+    if (!iso) return "—";
+    const date = new Date(iso);
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
-  const onDragEnd = () => {
-    dragRef.current = false;
-    dragStartRef.current = null;
-    window.removeEventListener("mousemove", onDragMove);
-    window.removeEventListener("mouseup", onDragEnd);
-    try {
-      window.localStorage.setItem(POSITION_STORAGE_KEY, JSON.stringify(position));
-    } catch (error) {
-      // ignore
+  const getDotColor = (level) => {
+    switch (level) {
+      case "green": return "#10b981";
+      case "yellow": return "#f59e0b";
+      case "red": return "#ef4444";
+      default: return "#94a3b8";
     }
   };
 
-  const onManualRefresh = () => {
-    if (isRefreshing) return;
-    setIsRefreshing(true);
-    const minSpinMs = 900;
-    const start = Date.now();
-    Promise.resolve(command(dispatch)).finally(() => {
-      const elapsed = Date.now() - start;
-      const remaining = Math.max(0, minSpinMs - elapsed);
-      if (refreshTimerRef.current) {
-        clearTimeout(refreshTimerRef.current);
+  const themeVars = theme === "light"
+    ? {
+        "--text": "#0b1014",
+        "--card-bg": "rgba(248, 250, 252, 0.98)",
+        "--card-border": "rgba(15, 23, 42, 0.08)",
+        "--row-bg": "rgba(226, 232, 240, 0.8)",
+        "--detail-bg": "rgba(226, 232, 240, 0.7)",
+        "--detail-row-bg": "rgba(203, 213, 225, 0.85)",
+        "--title-text": "#0f172a",
+        "--footer-bg": "rgba(203, 213, 225, 0.9)",
+        "--footer-text": "rgba(30, 41, 59, 0.8)",
+        "--button-bg": "rgba(226, 232, 240, 0.95)",
+        "--button-bg-hover": "rgba(203, 213, 225, 0.95)",
+        "--button-text": "rgba(30, 41, 59, 0.8)",
+        "--button-text-hover": "rgba(30, 41, 59, 0.95)",
       }
-      refreshTimerRef.current = setTimeout(() => {
-        setIsRefreshing(false);
-      }, remaining);
-    });
-  };
-
-  const themeVars =
-    theme === "light"
-      ? {
-          "--text": "#0b1014",
-          "--card-bg": "rgba(248, 250, 252, 0.98)",
-          "--card-border": "rgba(15, 23, 42, 0.08)",
-          "--row-bg": "rgba(226, 232, 240, 0.8)",
-          "--detail-bg": "rgba(226, 232, 240, 0.7)",
-          "--detail-row-bg": "rgba(203, 213, 225, 0.85)",
-          "--muted-text": "rgba(71, 85, 105, 0.8)",
-          "--label-text": "rgba(71, 85, 105, 0.8)",
-          "--title-text": "#0f172a",
-          "--footer-bg": "rgba(203, 213, 225, 0.9)",
-          "--button-bg": "rgba(226, 232, 240, 0.95)",
-          "--button-bg-hover": "rgba(203, 213, 225, 0.95)",
-          "--button-text": "rgba(30, 41, 59, 0.8)",
-          "--button-text-hover": "rgba(30, 41, 59, 0.95)",
-          "--time-text": "rgba(30, 41, 59, 0.8)",
-        }
-      : {
-          "--text": "#0b1014",
-          "--card-bg": "rgba(33, 35, 38, 0.95)",
-          "--card-border": "rgba(255, 255, 255, 0.08)",
-          "--row-bg": "rgba(55, 58, 62, 0.75)",
-          "--detail-bg": "rgba(55, 58, 62, 0.55)",
-          "--detail-row-bg": "rgba(72, 76, 81, 0.7)",
-          "--muted-text": "rgba(148, 163, 184, 0.9)",
-          "--label-text": "rgba(148, 163, 184, 0.9)",
-          "--title-text": "#f8fafc",
-          "--footer-bg": "rgba(86, 90, 96, 0.95)",
-          "--button-bg": "rgba(112, 116, 122, 0.95)",
-          "--button-bg-hover": "rgba(120, 124, 130, 0.95)",
-          "--button-text": "rgba(226, 232, 240, 0.8)",
-          "--button-text-hover": "rgba(226, 232, 240, 0.95)",
-          "--time-text": "rgba(226, 232, 240, 0.8)",
-        };
+    : {
+        "--text": "#f8fafc",
+        "--card-bg": "rgba(33, 35, 38, 0.95)",
+        "--card-border": "rgba(255, 255, 255, 0.08)",
+        "--row-bg": "rgba(55, 58, 62, 0.75)",
+        "--detail-bg": "rgba(55, 58, 62, 0.55)",
+        "--detail-row-bg": "rgba(72, 76, 81, 0.7)",
+        "--title-text": "#f8fafc",
+        "--footer-bg": "rgba(86, 90, 96, 0.95)",
+        "--footer-text": "rgba(226, 232, 240, 0.8)",
+        "--button-bg": "rgba(112, 116, 122, 0.95)",
+        "--button-bg-hover": "rgba(120, 124, 130, 0.95)",
+        "--button-text": "rgba(226, 232, 240, 0.8)",
+        "--button-text-hover": "rgba(226, 232, 240, 0.95)",
+      };
 
   return (
     <div className={containerClass} style={{ top: position.top, left: position.left, ...themeVars }}>
       <div className={widgetClass}>
-        <div className="header" onMouseDown={onDragStart} title="Drag to move">
-          <div>
-            <div className="title">AI Service Health</div>
-            <div className="subtitle">Refreshes every 2 minutes</div>
+        <div
+          style={{
+            fontSize: '16px',
+            fontWeight: '700',
+            marginBottom: '12px',
+            cursor: 'move',
+            userSelect: 'none',
+            color: 'var(--title-text)',
+            flexShrink: 0,
+            display: 'flex',
+            alignItems: 'baseline',
+            gap: '8px',
+          }}
+          onMouseDown={onMouseDown}
+          title="Drag to move"
+        >
+          <span>AI Service Health</span>
+          <span style={{
+            fontSize: '9px',
+            fontWeight: '500',
+            opacity: 0.5,
+            letterSpacing: '0.05em',
+          }}>
+            v2.0
+          </span>
+        </div>
+        <div className={scrollableContentClass}>
+        <div className={serviceContainerClass}>
+          <div className={rowClass}>
+            <span
+              className={dotClass}
+              style={{
+                background: getDotColor(openai?.level),
+                boxShadow: `0 0 8px ${getDotColor(openai?.level)}99`,
+              }}
+            />
+            <span style={{ flex: 1, fontWeight: '500', display: 'flex', alignItems: 'center' }}>
+              OpenAI
+              <span
+                className={externalLinkClass}
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  run(`open "${OPENAI_STATUS_PAGE}"`);
+                }}
+                title="View OpenAI status page"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M15 3h6v6"/>
+                  <path d="M10 14 21 3"/>
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                </svg>
+              </span>
+            </span>
+            <button
+              className={`${toggleButtonClass} ${openaiOpen ? "open" : ""}`}
+              onClick={() => setOpenaiOpen(!openaiOpen)}
+              title={openaiOpen ? "Hide details" : "Show details"}
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
           </div>
-          <div className="header-actions" />
-        </div>
-        <div className="rows">
-          <StatusRow
-            status={statuses?.openai}
-            isOpen={openaiOpen}
-            onToggle={() => setOpenaiOpen((prev) => !prev)}
-            showStatus={false}
-            detail={[
-              ...OPENAI_MODEL_GROUPS.flatMap((group) => [
-                <div key={`${group.label}-label`} className="detail-section">
-                  {group.label}
-                </div>,
-                ...group.models.map((name) => (
-                  <div key={name} className="detail-row">
-                    <span className={`dot ${statuses?.openai?.level || "unknown"}`} />
-                    <span>{name}</span>
-                    <span className="label">{statuses?.openai?.label || "Unknown"}</span>
+          {openaiOpen && (
+            <div className={detailClass}>
+              {OPENAI_MODEL_GROUPS.map((group) => (
+                <React.Fragment key={group.label}>
+                  <div
+                    className={`${detailSectionClass} ${openModelGroups[group.label] ? "open" : ""}`}
+                    onClick={() => {
+                      setOpenModelGroups(prev => ({
+                        ...prev,
+                        [group.label]: !prev[group.label]
+                      }));
+                    }}
+                  >
+                    <span
+                      className={smallDotClass}
+                      style={{
+                        background: getDotColor(openai?.level),
+                        boxShadow: `0 0 4px ${getDotColor(openai?.level)}99`,
+                      }}
+                    />
+                    <span style={{ flex: 1 }}>{group.label}</span>
+                    <svg
+                      width="10"
+                      height="10"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
                   </div>
-                )),
-              ]),
-              ...(statuses?.openai?.components
-                ? [
-                    <div key="openai-api-label" className="detail-section">
-                      APIs &amp; Codex
-                    </div>,
-                    ...OPENAI_COMPONENTS.map((item) => {
-                      const match = statuses.openai.components.find(
-                        (component) => component.name?.toLowerCase() === item.key.toLowerCase()
-                      );
-                      const level = componentLevel(match?.status);
-                      return (
-                        <div key={item.key} className="detail-row">
-                          <span className={`dot ${level.level}`} />
-                          <span>{item.label}</span>
-                          <span className="label">{level.label}</span>
-                        </div>
-                      );
-                    }),
-                  ]
-                : []),
-            ]}
-          />
-          <StatusRow
-            status={statuses?.anthropic}
-            isOpen={anthropicOpen}
-            onToggle={() => setAnthropicOpen((prev) => !prev)}
-            showStatus={false}
-            detail={
-              statuses?.anthropic?.components
-                ? ANTHROPIC_COMPONENTS.map((item) => {
-                    const match = statuses.anthropic.components.find(
-                      (component) => component.name?.toLowerCase() === item.key.toLowerCase()
-                    );
-                    const level = componentLevel(match?.status);
-                    return (
-                      <div key={item.key} className="detail-row">
-                        <span className={`dot ${level.level}`} />
-                        <span>{item.label}</span>
-                        <span className="label">{level.label}</span>
-                      </div>
-                    );
-                  })
-                : null
-            }
-          />
+                  {openModelGroups[group.label] && group.models.map((modelName) => (
+                    <div key={modelName} className={detailRowClass}>
+                      <span
+                        className={tinyDotClass}
+                        style={{
+                          background: getDotColor(openai?.level),
+                          boxShadow: `0 0 4px ${getDotColor(openai?.level)}99`,
+                        }}
+                      />
+                      <span style={{ flex: 1 }}>{modelName}</span>
+                      <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', opacity: 0.7 }}>
+                        {openai?.label || "Unknown"}
+                      </span>
+                    </div>
+                  ))}
+                </React.Fragment>
+              ))}
+              <div
+                className={`${detailSectionClass} ${openModelGroups['APIs'] ? "open" : ""}`}
+                onClick={() => {
+                  setOpenModelGroups(prev => ({
+                    ...prev,
+                    'APIs': !prev['APIs']
+                  }));
+                }}
+              >
+                <span
+                  className={smallDotClass}
+                  style={{
+                    background: getDotColor(openai?.level),
+                    boxShadow: `0 0 4px ${getDotColor(openai?.level)}99`,
+                  }}
+                />
+                <span style={{ flex: 1 }}>APIs &amp; Services</span>
+                <svg
+                  width="10"
+                  height="10"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </div>
+              {openModelGroups['APIs'] && OPENAI_COMPONENTS.map((item) => {
+                const match = openaiComponents?.find(
+                  (c) => c.name?.toLowerCase() === item.key.toLowerCase()
+                );
+                const level = componentLevel(match?.status);
+                return (
+                  <div key={item.key} className={detailRowClass}>
+                    <span
+                      className={tinyDotClass}
+                      style={{
+                        background: getDotColor(level.level),
+                        boxShadow: `0 0 4px ${getDotColor(level.level)}99`,
+                      }}
+                    />
+                    <span style={{ flex: 1 }}>{item.label}</span>
+                    <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', opacity: 0.7 }}>
+                      {level.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
-
-        {error ? <div className="error">{error}</div> : null}
+        <div className={serviceContainerClass} style={{ marginBottom: 0 }}>
+          <div className={rowClass}>
+            <span
+              className={dotClass}
+              style={{
+                background: getDotColor(anthropic?.level),
+                boxShadow: `0 0 8px ${getDotColor(anthropic?.level)}99`,
+              }}
+            />
+            <span style={{ flex: 1, fontWeight: '500', display: 'flex', alignItems: 'center' }}>
+              Anthropic
+              <span
+                className={externalLinkClass}
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  run(`open "${ANTHROPIC_STATUS_PAGE}"`);
+                }}
+                title="View Anthropic status page"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M15 3h6v6"/>
+                  <path d="M10 14 21 3"/>
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                </svg>
+              </span>
+            </span>
+            <button
+              className={`${toggleButtonClass} ${anthropicOpen ? "open" : ""}`}
+              onClick={() => setAnthropicOpen(!anthropicOpen)}
+              title={anthropicOpen ? "Hide details" : "Show details"}
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+          </div>
+          {anthropicOpen && (
+            <div className={detailClass}>
+              {ANTHROPIC_COMPONENTS.map((item) => {
+                const match = anthropicComponents?.find(
+                  (c) => c.name?.toLowerCase() === item.key.toLowerCase()
+                );
+                const level = componentLevel(match?.status);
+                return (
+                  <div key={item.key} className={detailRowClass}>
+                    <span
+                      className={tinyDotClass}
+                      style={{
+                        background: getDotColor(level.level),
+                        boxShadow: `0 0 4px ${getDotColor(level.level)}99`,
+                      }}
+                    />
+                    <span style={{ flex: 1 }}>{item.label}</span>
+                    <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', opacity: 0.7 }}>
+                      {level.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        {error && (
+          <div style={{ fontSize: '11px', color: '#fca5a5', marginTop: '8px' }}>
+            Error: {error}
+          </div>
+        )}
+        </div>
       </div>
-      <div className={footerBarClass}>
-        <div className={footerStackClass}>
-          <span className={footerLabelClass}>
-            Last updated {formatTime(lastUpdated)}
-          </span>
-          <span className={footerTimeValueClass}>
-            Last checked {formatTime(lastChecked)}
-          </span>
+      <div className={footerClass}>
+        <div style={{ fontSize: '11px', fontWeight: '600', color: 'var(--footer-text)' }}>
+          Last updated: {formatTime(lastUpdated)}
         </div>
-        <div className={footerActionsClass}>
+        <div style={{ display: 'flex', gap: '6px' }}>
           <button
-            className={`${iconButtonClass} ${iconButtonHoverClass} ${themeToggleClass}`}
-            type="button"
-            title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
-            onMouseDown={(event) => event.stopPropagation()}
+            className={buttonClass}
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
           >
-            {theme === "dark" ? (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                width="18"
-                height="18"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />
-              </svg>
-            ) : (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                width="18"
-                height="18"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" />
-              </svg>
-            )}
+          {theme === "dark" ? (
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              width="18"
+              height="18"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />
+            </svg>
+          ) : (
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              width="18"
+              height="18"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" />
+            </svg>
+          )}
           </button>
           <button
-            className={`${iconButtonClass} ${iconButtonHoverClass} ${spinClass} ${
-              isRefreshing ? "is-spinning" : ""
-            }`}
-            type="button"
+            className={`${buttonClass} ${isRefreshing ? "spinning" : ""}`}
+            onClick={() => {
+              if (isRefreshing) return;
+              setIsRefreshing(true);
+              setTimeout(() => setIsRefreshing(false), 900);
+            }}
             title="Refresh status"
-            onMouseDown={(event) => event.stopPropagation()}
-            onClick={onManualRefresh}
             disabled={isRefreshing}
           >
-            {isRefreshing ? (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
-                <path d="M21 3v5h-5" />
-              </svg>
-            ) : (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M12 17V3" />
-                <path d="m6 11 6 6 6-6" />
-                <path d="M19 21H5" />
-              </svg>
-            )}
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+              <path d="M21 3v5h-5" />
+            </svg>
           </button>
         </div>
       </div>

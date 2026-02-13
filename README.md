@@ -139,12 +139,60 @@ const [position, setPosition] = React.useState({ top: 25, left: 25 });
 const [theme, setTheme] = React.useState("dark");
 ```
 
+## 🔄 Updating Models (models.json)
+
+The widget uses a **dynamic model loading system** that fetches model lists from GitHub. This means you can add new models without touching the widget code!
+
+### How It Works
+
+1. **On first load**: Widget fetches `models.json` from this repository
+2. **Cached**: Model lists stored in state for the session
+3. **Fallback**: If fetch fails, uses hardcoded defaults
+4. **Automatic**: Users get updates when they refresh Übersicht
+
+### Adding New Models
+
+When new models are released (e.g., GPT-6):
+
+1. **Edit `models.json`** in this repository
+2. **Add new model group**:
+   ```json
+   {
+     "label": "GPT-6",
+     "models": ["GPT-6", "GPT-6 turbo", "GPT-6 mini"]
+   }
+   ```
+3. **Commit and push** to GitHub
+4. **Done!** Users automatically get updates
+
+📖 **Full guide**: See [MODELS.md](MODELS.md) for detailed instructions
+
+### What's Automatic vs Manual
+
+✅ **Automatic** (no work needed):
+- API component status (Chat Completions, Embeddings, etc.)
+- Service health indicators
+- Real-time status updates
+
+📝 **Manual** (edit models.json):
+- Model family groupings (GPT-5.2, GPT-5.x, etc.)
+- Component labels and organization
+- New model additions (~2-3 times per year)
+
+> **Note**: Model groups are organizational labels for the UI. The status APIs don't provide comprehensive model lists, so these require occasional manual updates via `models.json`.
+
 ## 🌐 Data Sources
 
+### Real-Time Status APIs
 - **OpenAI Status**: `https://status.openai.com/api/v2/summary.json`
 - **Anthropic Status**: `https://status.claude.com/api/v2/summary.json`
 
 Both use the Statuspage API format for real-time service health data.
+
+### Model Configuration
+- **Model Lists**: `https://raw.githubusercontent.com/d4vid4nderson/ai-status-widget/main/models.json`
+
+Fetched once per session, cached for performance, with hardcoded fallback.
 
 ## 🐛 Troubleshooting
 
@@ -173,10 +221,20 @@ Both use the Statuspage API format for real-time service health data.
 ## 🤝 Contributing
 
 Contributions are welcome! Feel free to:
-- Report bugs or issues
-- Suggest new features
-- Submit pull requests
-- Improve documentation
+- **Report bugs or issues** - Use GitHub Issues
+- **Add new models** - Edit `models.json` (see [MODELS.md](MODELS.md))
+- **Suggest features** - Open a discussion
+- **Submit pull requests** - Code improvements welcome
+- **Improve documentation** - Help others understand the widget
+
+### Quick Contributions
+
+**Add a new model** (easiest way to contribute):
+1. Fork the repository
+2. Edit `models.json`
+3. Add your model to the appropriate section
+4. Submit a pull request
+5. Help everyone stay up-to-date! 🎉
 
 ## 📝 License
 

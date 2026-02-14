@@ -2,8 +2,11 @@ import { React, css, run } from "uebersicht";
 
 const OPENAI_URL = "https://status.openai.com/api/v2/summary.json";
 const ANTHROPIC_URL = "https://status.claude.com/api/v2/summary.json";
+const GOOGLE_PRODUCTS_URL = "https://status.cloud.google.com/products.json";
+const GOOGLE_INCIDENTS_URL = "https://status.cloud.google.com/incidents.json";
 const OPENAI_STATUS_PAGE = "https://status.openai.com/";
 const ANTHROPIC_STATUS_PAGE = "https://status.claude.com/";
+const GOOGLE_STATUS_PAGE = "https://status.cloud.google.com/";
 const MODELS_JSON_URL = "https://raw.githubusercontent.com/d4vid4nderson/ai-status-widget/main/models.json";
 const POSITION_STORAGE_KEY = "ai-status-widget:position";
 
@@ -28,6 +31,12 @@ const FALLBACK_anthropicComponentsList = [
   { key: "platform.claude.com (formerly console.anthropic.com)", label: "platform.claude.com" },
   { key: "Claude API (api.anthropic.com)", label: "Claude API" },
   { key: "Claude Code", label: "Claude Code" },
+];
+
+const FALLBACK_geminiProductsList = [
+  { id: "deUeOEPYanfJ9w8cpyBJ", label: "Gemini Code Assist" },
+  { id: "cxUh24jPxEXgyRlaVhuk", label: "Gemini Enterprise" },
+  { id: "Z0FZJAMvEB4j3NbCJs6B", label: "Vertex Gemini API" },
 ];
 
 const FALLBACK_openaiComponentsList = [
@@ -64,6 +73,86 @@ const componentLevel = (status) => {
   }
 };
 
+const computeGeminiStatus = (products, incidents, geminiProductsList) => {
+  if (!products || !incidents || !geminiProductsList) {
+    return {
+      overall: { level: "unknown", label: "Unknown" },
+      products: geminiProductsList.map(p => ({
+        ...p,
+        status: { level: "unknown", label: "Unknown" }
+      }))
+    };
+  }
+
+  // Helper to check if incident is active
+  const isActive = (incident) =>
+    incident.currently_affected_locations &&
+    incident.currently_affected_locations.length > 0;
+
+  // Helper to map severity to level
+  const severityToLevel = (incident) => {
+    if (!isActive(incident)) {
+      return { level: "green", label: "Operational" };
+    }
+
+    if (incident.status === "SERVICE_OUTAGE" || incident.severity === "high") {
+      return { level: "red", label: "Major outage" };
+    }
+
+    if (incident.severity === "medium" || incident.severity === "low") {
+      return { level: "yellow", label: "Degraded" };
+    }
+
+    return { level: "yellow", label: "Issues" };
+  };
+
+  // Compute status for each monitored product
+  const productsWithStatus = geminiProductsList.map(product => {
+    // Find active incidents affecting this product
+    const affectingIncidents = incidents.filter(incident =>
+      isActive(incident) &&
+      incident.affected_products &&
+      incident.affected_products.some(ap => ap.id === product.id)
+    );
+
+    if (affectingIncidents.length === 0) {
+      return {
+        ...product,
+        status: { level: "green", label: "Operational" }
+      };
+    }
+
+    // Find worst severity among affecting incidents
+    const worstIncident = affectingIncidents.reduce((worst, current) => {
+      const currentLevel = severityToLevel(current);
+      const worstLevel = severityToLevel(worst);
+
+      const levelPriority = { red: 3, yellow: 2, green: 1, unknown: 0 };
+      return levelPriority[currentLevel.level] > levelPriority[worstLevel.level]
+        ? current
+        : worst;
+    });
+
+    return {
+      ...product,
+      status: severityToLevel(worstIncident)
+    };
+  });
+
+  // Overall status is the worst status among all products
+  const overallStatus = productsWithStatus.reduce((worst, product) => {
+    const levelPriority = { red: 3, yellow: 2, green: 1, unknown: 0 };
+    return levelPriority[product.status.level] > levelPriority[worst.level]
+      ? product.status
+      : worst;
+  }, { level: "green", label: "Operational" });
+
+  return {
+    overall: overallStatus,
+    products: productsWithStatus
+  };
+};
+
 export const refreshFrequency = 120000; // 2 minutes
 
 export const className = `
@@ -77,14 +166,17 @@ export const className = `
 export const initialState = {
   openai: null,
   anthropic: null,
+  gemini: null,
   openaiComponents: [],
   anthropicComponents: [],
+  geminiComponents: [],
   lastUpdated: null,
   error: null,
   // Model lists (fetched from models.json, fallback to hardcoded)
   openaiModelGroups: FALLBACK_openaiModelGroups,
   openaiComponentsList: FALLBACK_openaiComponentsList,
   anthropicComponentsList: FALLBACK_anthropicComponentsList,
+  geminiProductsList: FALLBACK_geminiProductsList,
   modelsLoaded: false,
 };
 
@@ -107,20 +199,32 @@ export const command = async (dispatch, previousState) => {
     }
 
     // Fetch status data
-    const [openaiRes, anthropicRes] = await Promise.all([
+    const [openaiRes, anthropicRes, googleProducts, googleIncidents] = await Promise.all([
       fetchJson(OPENAI_URL),
       fetchJson(ANTHROPIC_URL),
+      fetchJson(GOOGLE_PRODUCTS_URL),
+      fetchJson(GOOGLE_INCIDENTS_URL),
     ]);
 
     const openaiStatus = levelFromIndicator(openaiRes?.status?.indicator);
     const anthropicStatus = levelFromIndicator(anthropicRes?.status?.indicator);
 
+    // Compute Gemini status from incidents
+    const geminiProductsList = modelsData?.gemini?.products || previousState?.geminiProductsList || FALLBACK_geminiProductsList;
+    const geminiData = computeGeminiStatus(
+      googleProducts?.products,
+      googleIncidents,
+      geminiProductsList
+    );
+
     const updatePayload = {
       type: "UPDATE",
       openai: openaiStatus,
       anthropic: anthropicStatus,
+      gemini: geminiData.overall,
       openaiComponents: openaiRes?.components || [],
       anthropicComponents: anthropicRes?.components || [],
+      geminiComponents: geminiData.products || [],
       lastUpdated: new Date().toISOString(),
       error: null,
     };
@@ -130,6 +234,7 @@ export const command = async (dispatch, previousState) => {
       updatePayload.openaiModelGroups = modelsData.openai?.modelGroups || FALLBACK_openaiModelGroups;
       updatePayload.openaiComponentsList = modelsData.openai?.components || FALLBACK_openaiComponentsList;
       updatePayload.anthropicComponentsList = modelsData.anthropic?.components || FALLBACK_anthropicComponentsList;
+      updatePayload.geminiProductsList = modelsData.gemini?.products || FALLBACK_geminiProductsList;
       updatePayload.modelsLoaded = true;
     }
 
@@ -148,14 +253,17 @@ export const updateState = (event, previousState) => {
       ...previousState,
       openai: event.openai,
       anthropic: event.anthropic,
+      gemini: event.gemini,
       openaiComponents: event.openaiComponents,
       anthropicComponents: event.anthropicComponents,
+      geminiComponents: event.geminiComponents,
       lastUpdated: event.lastUpdated,
       error: null,
       // Update model lists if provided
       openaiModelGroups: event.openaiModelGroups || previousState.openaiModelGroups,
       openaiComponentsList: event.openaiComponentsList || previousState.openaiComponentsList,
       anthropicComponentsList: event.anthropicComponentsList || previousState.anthropicComponentsList,
+      geminiProductsList: event.geminiProductsList || previousState.geminiProductsList,
       modelsLoaded: event.modelsLoaded || previousState.modelsLoaded,
     };
   }
@@ -375,13 +483,16 @@ const Widget = (props) => {
   const {
     openai,
     anthropic,
+    gemini,
     openaiComponents,
     anthropicComponents,
+    geminiComponents,
     lastUpdated,
     error,
     openaiModelGroups,
     openaiComponentsList,
     anthropicComponentsList,
+    geminiProductsList,
   } = props;
 
   // Use simple useState - position will reset on refresh but that's ok
@@ -390,6 +501,7 @@ const Widget = (props) => {
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const [openaiOpen, setOpenaiOpen] = React.useState(false);
   const [anthropicOpen, setAnthropicOpen] = React.useState(false);
+  const [geminiOpen, setGeminiOpen] = React.useState(false);
   const [openModelGroups, setOpenModelGroups] = React.useState({});
 
   const onMouseDown = (event) => {
@@ -479,24 +591,208 @@ const Widget = (props) => {
             color: 'var(--title-text)',
             flexShrink: 0,
             display: 'flex',
-            alignItems: 'baseline',
+            alignItems: 'center',
             gap: '8px',
           }}
           onMouseDown={onMouseDown}
           title="Drag to move"
         >
+          <img
+            src="ai-status-widget/ai_status.png"
+            alt="AI Status Icon"
+            style={{
+              width: '20px',
+              height: '20px',
+              objectFit: 'contain',
+            }}
+          />
           <span>AI Service Health</span>
           <span style={{
             fontSize: '9px',
             fontWeight: '500',
             opacity: 0.5,
             letterSpacing: '0.05em',
+            alignSelf: 'baseline',
           }}>
             v2.0
           </span>
         </div>
         <div className={scrollableContentClass}>
         <div className={serviceContainerClass}>
+          <div className={rowClass}>
+            <span
+              className={dotClass}
+              style={{
+                background: getDotColor(anthropic?.level),
+                boxShadow: `0 0 8px ${getDotColor(anthropic?.level)}99`,
+              }}
+            />
+            <span style={{ flex: 1, fontWeight: '500', display: 'flex', alignItems: 'center' }}>
+              Anthropic
+              <span
+                className={externalLinkClass}
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  run(`open "${ANTHROPIC_STATUS_PAGE}"`);
+                }}
+                title="View Anthropic status page"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M15 3h6v6"/>
+                  <path d="M10 14 21 3"/>
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                </svg>
+              </span>
+            </span>
+            <button
+              className={`${toggleButtonClass} ${anthropicOpen ? "open" : ""}`}
+              onClick={() => setAnthropicOpen(!anthropicOpen)}
+              title={anthropicOpen ? "Hide details" : "Show details"}
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+          </div>
+          {anthropicOpen && (
+            <div className={detailClass}>
+              {anthropicComponentsList.map((item) => {
+                const match = anthropicComponents?.find(
+                  (c) => c.name?.toLowerCase() === item.key.toLowerCase()
+                );
+                const level = componentLevel(match?.status);
+                return (
+                  <div key={item.key} className={detailRowClass}>
+                    <span
+                      className={tinyDotClass}
+                      style={{
+                        background: getDotColor(level.level),
+                        boxShadow: `0 0 4px ${getDotColor(level.level)}99`,
+                      }}
+                    />
+                    <span style={{ flex: 1 }}>{item.label}</span>
+                    <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', opacity: 0.7 }}>
+                      {level.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        <div className={serviceContainerClass}>
+          <div className={rowClass}>
+            <span
+              className={dotClass}
+              style={{
+                background: getDotColor(gemini?.level),
+                boxShadow: `0 0 8px ${getDotColor(gemini?.level)}99`,
+              }}
+            />
+            <span style={{ flex: 1, fontWeight: '500', display: 'flex', alignItems: 'center' }}>
+              Google Gemini
+              <span
+                className={externalLinkClass}
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  run(`open "${GOOGLE_STATUS_PAGE}"`);
+                }}
+                title="View Google Cloud Status page"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M15 3h6v6"/>
+                  <path d="M10 14 21 3"/>
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                </svg>
+              </span>
+            </span>
+            <span style={{
+              fontSize: '9px',
+              fontWeight: '600',
+              padding: '2px 6px',
+              borderRadius: '4px',
+              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+              color: '#fff',
+              letterSpacing: '0.05em',
+              textTransform: 'uppercase',
+              boxShadow: '0 2px 4px rgba(16, 185, 129, 0.3)',
+            }}>
+              New
+            </span>
+            <button
+              className={`${toggleButtonClass} ${geminiOpen ? "open" : ""}`}
+              onClick={() => setGeminiOpen(!geminiOpen)}
+              title={geminiOpen ? "Hide details" : "Show details"}
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+          </div>
+          {geminiOpen && (
+            <div className={detailClass}>
+              {geminiComponents.map((product) => {
+                const level = product.status || { level: "unknown", label: "Unknown" };
+                return (
+                  <div key={product.id} className={detailRowClass}>
+                    <span
+                      className={tinyDotClass}
+                      style={{
+                        background: getDotColor(level.level),
+                        boxShadow: `0 0 4px ${getDotColor(level.level)}99`,
+                      }}
+                    />
+                    <span style={{ flex: 1 }}>{product.label}</span>
+                    <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', opacity: 0.7 }}>
+                      {level.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        <div className={serviceContainerClass} style={{ marginBottom: 0 }}>
           <div className={rowClass}>
             <span
               className={dotClass}
@@ -635,88 +931,6 @@ const Widget = (props) => {
               </div>
               {openModelGroups['APIs'] && openaiComponentsList.map((item) => {
                 const match = openaiComponents?.find(
-                  (c) => c.name?.toLowerCase() === item.key.toLowerCase()
-                );
-                const level = componentLevel(match?.status);
-                return (
-                  <div key={item.key} className={detailRowClass}>
-                    <span
-                      className={tinyDotClass}
-                      style={{
-                        background: getDotColor(level.level),
-                        boxShadow: `0 0 4px ${getDotColor(level.level)}99`,
-                      }}
-                    />
-                    <span style={{ flex: 1 }}>{item.label}</span>
-                    <span style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.08em', opacity: 0.7 }}>
-                      {level.label}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-        <div className={serviceContainerClass} style={{ marginBottom: 0 }}>
-          <div className={rowClass}>
-            <span
-              className={dotClass}
-              style={{
-                background: getDotColor(anthropic?.level),
-                boxShadow: `0 0 8px ${getDotColor(anthropic?.level)}99`,
-              }}
-            />
-            <span style={{ flex: 1, fontWeight: '500', display: 'flex', alignItems: 'center' }}>
-              Anthropic
-              <span
-                className={externalLinkClass}
-                onMouseDown={(e) => {
-                  e.stopPropagation();
-                  e.preventDefault();
-                  run(`open "${ANTHROPIC_STATUS_PAGE}"`);
-                }}
-                title="View Anthropic status page"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M15 3h6v6"/>
-                  <path d="M10 14 21 3"/>
-                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-                </svg>
-              </span>
-            </span>
-            <button
-              className={`${toggleButtonClass} ${anthropicOpen ? "open" : ""}`}
-              onClick={() => setAnthropicOpen(!anthropicOpen)}
-              title={anthropicOpen ? "Hide details" : "Show details"}
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <polyline points="6 9 12 15 18 9"></polyline>
-              </svg>
-            </button>
-          </div>
-          {anthropicOpen && (
-            <div className={detailClass}>
-              {anthropicComponentsList.map((item) => {
-                const match = anthropicComponents?.find(
                   (c) => c.name?.toLowerCase() === item.key.toLowerCase()
                 );
                 const level = componentLevel(match?.status);

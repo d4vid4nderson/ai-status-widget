@@ -43,5 +43,12 @@
       { "key": "Claude API (api.anthropic.com)", "label": "Claude API" },
       { "key": "Claude Code", "label": "Claude Code" }
     ]
+  },
+  "gemini": {
+    "products": [
+      { "id": "deUeOEPYanfJ9w8cpyBJ", "label": "Gemini Code Assist" },
+      { "id": "cxUh24jPxEXgyRlaVhuk", "label": "Gemini Enterprise" },
+      { "id": "Z0FZJAMvEB4j3NbCJs6B", "label": "Vertex Gemini API" }
+    ]
   }
 }

@@ -3,7 +3,7 @@
   <h1 style="margin: 0;">AI Service Health Widget</h1>
 </div>
 
-A beautiful, feature-rich desktop widget for macOS [Übersicht](https://tracesof.net/uebersicht/) that monitors real-time service health for **OpenAI** and **Anthropic** AI services.
+A beautiful, feature-rich desktop widget for macOS [Übersicht](https://tracesof.net/uebersicht/) that monitors real-time service health for **OpenAI**, **Anthropic**, and **Google Gemini** AI services.
 
 ![Widget Screenshot](https://img.shields.io/badge/macOS-Übersicht-blue?logo=apple)
 ![Version](https://img.shields.io/badge/version-2.0-green)
@@ -11,7 +11,7 @@ A beautiful, feature-rich desktop widget for macOS [Übersicht](https://tracesof
 ## ✨ Features
 
 ### 🎯 Core Functionality
-- **Real-time status monitoring** for OpenAI and Anthropic services
+- **Real-time status monitoring** for OpenAI, Anthropic, and Google Gemini services
 - **Auto-refresh** every 2 minutes with manual refresh option
 - **Live API data** from official status pages
 - **Color-coded indicators** (🟢 Green: Operational, 🟡 Yellow: Issues, 🔴 Red: Outage)
@@ -19,8 +19,9 @@ A beautiful, feature-rich desktop widget for macOS [Übersicht](https://tracesof
 ### 🎨 User Interface
 - **Expandable service details** with smooth animations
 - **Collapsible model groups** for organized viewing:
-  - **OpenAI**: GPT-5.2, GPT-5.x, Codex, Realtime, Audio APIs
   - **Anthropic**: claude.ai, Platform, API, Claude Code
+  - **Google Gemini**: Gemini Code Assist, Gemini Enterprise, Vertex Gemini API
+  - **OpenAI**: GPT-5.2, GPT-5.x, Codex, Realtime, Audio APIs
 - **Visual hierarchy** with three dot sizes (Service → Group → Model)
 - **Rotating chevron icons** for expand/collapse actions
 - **Light/Dark theme toggle** with smooth transitions
@@ -120,12 +121,15 @@ A beautiful, feature-rich desktop widget for macOS [Übersicht](https://tracesof
 
 ## 📊 What's Monitored
 
+### Anthropic Services
+- **Products**: claude.ai, platform.claude.com, Claude API, Claude Code
+
+### Google Gemini Services
+- **Products**: Gemini Code Assist, Gemini Enterprise, Vertex Gemini API
+
 ### OpenAI Services
 - **Model Families**: GPT-5.2, GPT-5.x, Codex, Realtime, Audio
 - **API Services**: Chat Completions, Embeddings, Files, Batch, Fine-tuning, Moderations, Image Generation, Compliance, Search
-
-### Anthropic Services
-- **Products**: claude.ai, platform.claude.com, Claude API, Claude Code
 
 ## 🔧 Configuration
 
@@ -189,8 +193,11 @@ When new models are released (e.g., GPT-6):
 ### Real-Time Status APIs
 - **OpenAI Status**: `https://status.openai.com/api/v2/summary.json`
 - **Anthropic Status**: `https://status.claude.com/api/v2/summary.json`
+- **Google Cloud Status**:
+  - Products: `https://status.cloud.google.com/products.json`
+  - Incidents: `https://status.cloud.google.com/incidents.json`
 
-Both use the Statuspage API format for real-time service health data.
+OpenAI and Anthropic use the Statuspage API format. Google uses an incident-based format from Google Cloud Status.
 
 ### Model Configuration
 - **Model Lists**: `https://raw.githubusercontent.com/d4vid4nderson/ai-status-widget/main/models.json`

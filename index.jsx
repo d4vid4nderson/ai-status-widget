@@ -737,17 +737,19 @@ const Widget = (props) => {
                 </svg>
               </span>
             </span>
-            <span style={{
-              fontSize: '9px',
-              fontWeight: '600',
-              padding: '2px 6px',
-              borderRadius: '4px',
-              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-              color: '#fff',
-              letterSpacing: '0.05em',
-              textTransform: 'uppercase',
-              boxShadow: '0 2px 4px rgba(16, 185, 129, 0.3)',
-            }}>
+            <span
+              style={{
+                fontSize: '9px',
+                fontWeight: '600',
+                padding: '2px 6px',
+                borderRadius: '4px',
+                background: 'rgba(64, 224, 208, 0.2)',
+                color: '#40E0D0',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                marginLeft: '8px',
+              }}
+            >
               New
             </span>
             <button
